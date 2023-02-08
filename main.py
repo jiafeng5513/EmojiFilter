@@ -3,7 +3,6 @@ import exifread
 import shutil
 from glob import glob
 from PIL import Image
-import exifread
 import json
 import urllib.request
 
@@ -22,9 +21,9 @@ import urllib.request
 1. 手机电量/信号标志
 2. 不正常的分辨率
 '''
-SRC_DIR = "D:\WorkSpace\DOC"
-DST_DIR = ""
-EMOJI_FILE_SIZE_THRESHOLD = 1024
+SRC_DIR = "D:/iphoneImageBack/src"
+DST_DIR = "D:/iphoneImageBack/dst"
+EMOJI_FILE_SIZE_THRESHOLD = 1024 * 50  # 50kB
 EMOJI_RESOLUTION_THRESHOLD = 640 * 480
 
 
@@ -41,30 +40,37 @@ def mov(srcfile, dstpath):
         fpath, fname = os.path.split(srcfile)  # 分离文件名和路径
         if not os.path.exists(dstpath):
             os.makedirs(dstpath)  # 创建路径
-        shutil.move(srcfile, dstpath + fname)  # 移动文件
+        shutil.move(srcfile, os.path.join(dstpath, fname))  # 移动文件
 
 
 def is_shot_by_camera(filename):
-    f = open(filename, 'rb')
+    try:
+        f = open(filename, 'rb')
 
-    tags = exifread.process_file(f)
-    if tags is None:
-        return False
+        tags = exifread.process_file(f)
+        if tags is None:
+            return False
 
-    if 'Image Make' in tags or 'Image Model' in tags:
+        if 'Image Make' in tags or 'Image Model' in tags:
+            return True
+    except:
+        print('open failed')
         return True
-
     return False
 
 
 if __name__ == '__main__':
+    # size = os.path.getsize(SRC_DIR+'/IMG_0176.JPG')
+    # print(size)
     for fpathe, dirs, fs in os.walk(SRC_DIR):
         for f in fs:
             filename = os.path.join(fpathe, f)
             print(filename)
             flag = False
             # mp4,avi,raw file is not an emoji
-            if filename.endswith('mp4') or filename.endswith('avi') or filename.endswith('raw'):
+            if filename.endswith('mp4') or filename.endswith('avi') or filename.endswith('raw') or \
+                    filename.endswith('MP4') or filename.endswith('AVI') or filename.endswith('hdlr') or \
+                    filename.endswith('RAW') or filename.endswith('HEIC') or filename.endswith('MOV'):
                 continue
             # if exif message has camera msg, is not an emoji TODO:是否有可能某些图片有相机信息,但是其实是ps之类的软件名呢
             if is_shot_by_camera(filename):
@@ -79,7 +85,8 @@ if __name__ == '__main__':
             imageSize = Image.open(filename).size
             if imageSize[0] * imageSize[1] < EMOJI_RESOLUTION_THRESHOLD:
                 flag = True
-            print(Image.open('1.jpg').size)  # 宽高
+
             # this is an emoji
             if flag:
                 mov(filename, DST_DIR)
+                print("mov {} to {}".format(filename, DST_DIR))
