@@ -15,7 +15,7 @@ device = torch.device("cpu")  # device
 learning_rate = 1e-2          # init learning rate
 max_epoch = 50                # loop training set by max_epoch times
 batch_size = 2                # mini batch size
-val_iter = 10                # val on each val_iter mini batch
+val_each_iter = 10                 # val on each val_iter mini batch
 resize_w = 512                # resize w result in preprocess
 resize_h = 512                # resize h result in preprocess
 
@@ -147,15 +147,22 @@ def train_and_val(train_set_json_path, val_set_json_path):
             loss.backward()
             optimizer.step()
 
-            if iter_total % val_iter == 0:
+            if iter_total % val_each_iter == 0:
                 print("its time to val")
+                for val_iter, (val_image, val_label) in enumerate(val_loader):
+                    logits = model(val_image)
+                    # 输入一个batch，得到一个batch的输出
+
 
             iter_total += 1
     pass
 
 
 if __name__ == "__main__":
-    train_and_val('D:/WorkSpace/jiafeng_projects/EmojiFilter/data/dataset.json', None)
+    # train_and_val('./data/dataset.json', './data/dataset.json')
+
+    logits = torch.rand(batch_size, 4)
+    print(logits)
 
     # with torch.no_grad():
 
