@@ -1,0 +1,51 @@
+{
+  "root": "./data",
+  "len": 5,
+  "images": [
+    {
+      "path": "./data\\camera\\ap5cy-tx5kl.jpg",
+      "image_size": [
+        900,
+        1600
+      ],
+      "file_size": 2102252,
+      "label": 0
+    },
+    {
+      "path": "./data\\camera\\apr9q-s4nmr.jpg",
+      "image_size": [
+        889,
+        500
+      ],
+      "file_size": 363489,
+      "label": 0
+    },
+    {
+      "path": "./data\\emoji\\5c3f1f4500954e5d940fbd444c45700d.jpeg",
+      "image_size": [
+        400,
+        400
+      ],
+      "file_size": 17913,
+      "label": 2
+    },
+    {
+      "path": "./data\\screen_shot\\379bc1381db583664e0abc96daa74649_hd.jpg",
+      "image_size": [
+        720,
+        1281
+      ],
+      "file_size": 76971,
+      "label": 1
+    },
+    {
+      "path": "./data\\web\\ap1t0-s6xv9.jpg",
+      "image_size": [
+        600,
+        352
+      ],
+      "file_size": 176580,
+      "label": 3
+    }
+  ]
+}

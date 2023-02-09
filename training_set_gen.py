@@ -10,30 +10,13 @@ import exifread
 依次遍历四个文件夹中的所有图片,提取文件绝对路径, 标签, 并构造特征向量, 长度7
 [height, width, 是否有Image Make信息(0/1), 是否有Image Model信息(0/1), 是否有gps信息(0/1), 文件格式(全局字典累计), 文件大小kb取整]
 '''
-DATA_SET_ROOT = "/train_val_set"
+DATA_SET_ROOT = "./data"
 CLASS_0_FOLDER = "camera"
 CLASS_1_FOLDER = "screen_shot"
 CLASS_2_FOLDER = "emoji"
 CLASS_3_FOLDER = "web"
 EXEMPT_SUFFIX = ['avi', 'AVI', 'mp4', 'MP4', 'mov', 'MOV', 'raw', 'RAW', 'ARW', 'arw', 'heic', 'json']
 SUFFIX_BANK = []
-
-
-
-def mov(srcfile, dstpath):
-    """
-    move file srcfile to dstpath,
-    :param srcfile: abs filename
-    :param dstpath: dst path
-    :return: None
-    """
-    if not os.path.isfile(srcfile):
-        print("%s not exist!" % (srcfile))
-    else:
-        fpath, fname = os.path.split(srcfile)  # 分离文件名和路径
-        if not os.path.exists(dstpath):
-            os.makedirs(dstpath)  # 创建路径
-        shutil.move(srcfile, dstpath + fname)  # 移动文件
 
 
 def is_shot_by_camera(filename):
@@ -67,12 +50,14 @@ def feature_encode(filename, imagesize, filesize, subfix, exif_tags):
     # subfix和exif_tags做onehot编码
     pass
 
+
 if __name__ == '__main__':
+    imageList = []
     for fpathe, dirs, fs in os.walk(DATA_SET_ROOT):
         for f in fs:
             filename = os.path.join(fpathe, f)
             print(filename)
-            file_subfix = os.path.splitext(filename)[-1].replace('.','')
+            file_subfix = os.path.splitext(filename)[-1].replace('.', '')
             if file_subfix in EXEMPT_SUFFIX:
                 print("skip {}".format(filename))
                 continue
@@ -80,22 +65,19 @@ if __name__ == '__main__':
             if label == -1:
                 raise RuntimeError("read label for {} return -1!".format(filename))
 
-            imageSize = Image.open(filename).size
-            filesize = os.path.getsize(filename)
+            image_size = Image.open(filename).size
+            file_size = os.path.getsize(filename)
             with open(filename, 'rb') as file:
                 exif_tags = exifread.process_file(file)
+            img_item = {'path': filename,
+                        'image_size': image_size,
+                        'file_size': file_size,
+                        'label': label}
+            imageList.append(img_item)
+        # end of for f in fs:
+    # end of os.walk(DATA_SET_ROOT)
 
-
-            if filename.endswith('gif'):
-                flag = True
-            # size < EMOJI_FILE_SIZE_THRESHOLD is emoji
-            if os.path.getsize(filename) < EMOJI_FILE_SIZE_THRESHOLD:
-                flag = True
-            # resolution < EMOJI_RESOLUTION_THRESHOLD, is a emoji
-
-            if imageSize[0] * imageSize[1] < EMOJI_RESOLUTION_THRESHOLD:
-                flag = True
-            print(Image.open('1.jpg').size)  # 宽高
-            # this is an emoji
-            if flag:
-                mov(filename, DST_DIR)
+    dataset = {'root': DATA_SET_ROOT, 'len': len(imageList), 'images': imageList}
+    with open(os.path.join(DATA_SET_ROOT, "dataset.json"), "w") as dataset_json:
+        json.dump(dataset, dataset_json)
+        dataset_json.close()
