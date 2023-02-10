@@ -1,10 +1,7 @@
 import os
 import exifread
 import shutil
-from glob import glob
 from PIL import Image
-import json
-import urllib.request
 
 '''
 已知图库里含有若干种型号已知的相机拍摄的图片和视频,手机屏幕截图,电脑截图,编辑过的图片副本,表情包,网络图片,社交平台上保存到手机的图片,

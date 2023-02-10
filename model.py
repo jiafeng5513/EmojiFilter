@@ -1,13 +1,12 @@
 import os
-import time
+import shutil
+import json
 import torch.nn as nn
+from PIL import Image
 import torch
 import torchvision.transforms as transforms
-from PIL import Image
-from matplotlib import pyplot as plt
 import torchvision.models as models
 from torch.utils.data import dataset
-import json
 import torch.nn.functional as F
 
 # global def
@@ -18,6 +17,12 @@ batch_size = 2                # mini batch size
 val_each_iter = 10                 # val on each val_iter mini batch
 resize_w = 512                # resize w result in preprocess
 resize_h = 512                # resize h result in preprocess
+model_name = 'emoji_filter_net.pth'  # name of model, for save and load
+CLASS_0_FOLDER = "camera"
+CLASS_1_FOLDER = "screen_shot"
+CLASS_2_FOLDER = "emoji"
+CLASS_3_FOLDER = "web"
+EXEMPT_SUFFIX = ['avi', 'AVI', 'mp4', 'MP4', 'mov', 'MOV', 'raw', 'RAW', 'ARW', 'arw', 'heic', 'json']
 
 
 # dataloader
@@ -149,20 +154,89 @@ def train_and_val(train_set_json_path, val_set_json_path):
 
             if iter_total % val_each_iter == 0:
                 print("its time to val")
+                correct_count = 0
                 for val_iter, (val_image, val_label) in enumerate(val_loader):
-                    logits = model(val_image)
-                    # 输入一个batch，得到一个batch的输出
-
+                    val_logits = model(val_image)
+                    val_loss = loss_function(val_logits, val_label)
+                    correct_count += torch.sum(val_label == torch.argmax(val_logits, dim=1, keepdim=False))
+                    print("val, iter {}/{}, loss = {}".format(val_iter + 1, val_mini_batch_number, val_loss))
+                acc = correct_count / (val_mini_batch_number * batch_size)
+                print("val acc= {}".format(acc))
 
             iter_total += 1
     pass
 
+    torch.save(model, 'emoji_filter_net.pth')
+
+
+def mov(srcfile, dstpath):
+    """
+    move file srcfile to dstpath,
+    :param srcfile: abs filename
+    :param dstpath: dst path
+    :return: None
+    """
+    if not os.path.isfile(srcfile):
+        print("%s not exist!" % (srcfile))
+    else:
+        fpath, fname = os.path.split(srcfile)  # 分离文件名和路径
+        if not os.path.exists(dstpath):
+            os.makedirs(dstpath)  # 创建路径
+        shutil.move(srcfile, os.path.join(dstpath, fname))  # 移动文件
+
+
+def inference(src_path, dist_path):
+    if not os.path.exists(os.path.join(dist_path, CLASS_0_FOLDER)):
+        os.mkdir(os.path.join(dist_path, CLASS_0_FOLDER))
+
+    if not os.path.exists(os.path.join(dist_path, CLASS_1_FOLDER)):
+        os.mkdir(os.path.join(dist_path, CLASS_1_FOLDER))
+
+    if not os.path.exists(os.path.join(dist_path, CLASS_2_FOLDER)):
+        os.mkdir(os.path.join(dist_path, CLASS_2_FOLDER))
+
+    if not os.path.exists(os.path.join(dist_path, CLASS_3_FOLDER)):
+        os.mkdir(os.path.join(dist_path, CLASS_3_FOLDER))
+
+    model = torch.load(model_name)
+
+    inference_transforms = transforms.Compose([
+        transforms.Resize([resize_h, resize_w]),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5], std=[0.5])
+    ])
+
+    for fpathe, dirs, fs in os.walk(src_path):
+        for f in fs:
+            filename = os.path.join(fpathe, f)
+            print(filename)
+            file_subfix = os.path.splitext(filename)[-1].replace('.', '')
+            if file_subfix in EXEMPT_SUFFIX:
+                print("skip {}".format(filename))
+                continue
+
+            img = Image.open(filename)
+            with torch.no_grad():
+                input_tensor = inference_transforms(img)
+                infer_logits = model(input_tensor)
+                class_id = torch.argmax(infer_logits, dim=1, keepdim=False)
+                print("class id = {} for {}".format(class_id, filename))
+
+            if class_id == 0:
+                mov(filename, CLASS_0_FOLDER)
+            elif class_id == 1:
+                mov(filename, CLASS_1_FOLDER)
+            elif class_id == 2:
+                mov(filename, CLASS_2_FOLDER)
+            elif class_id == 3:
+                mov(filename, CLASS_3_FOLDER)
+            else:
+                raise RuntimeError("class id overflow! ")
+
+
+
+    pass
 
 if __name__ == "__main__":
-    # train_and_val('./data/dataset.json', './data/dataset.json')
-
-    logits = torch.rand(batch_size, 4)
-    print(logits)
-
-    # with torch.no_grad():
+    train_and_val('./data/dataset.json', './data/dataset.json')
 
