@@ -8,20 +8,22 @@ import torchvision.transforms as transforms
 import torchvision.models as models
 from torch.utils.data import dataset
 import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter
+
 
 # global def
-device = torch.device("cpu")  # device
-learning_rate = 1e-2          # init learning rate
-max_epoch = 50                # loop training set by max_epoch times
-batch_size = 2                # mini batch size
-val_each_iter = 10                 # val on each val_iter mini batch
+device = torch.device("cuda")  # device
+learning_rate = 1e-3          # init learning rate
+max_epoch = 5                # loop training set by max_epoch times
+batch_size = 16                # mini batch size
+val_each_iter = 100                 # val on each val_iter mini batch
 resize_w = 512                # resize w result in preprocess
 resize_h = 512                # resize h result in preprocess
 model_name = 'emoji_filter_net.pth'  # name of model, for save and load
 CLASS_0_FOLDER = "camera"
 CLASS_1_FOLDER = "screen_shot"
 CLASS_2_FOLDER = "emoji"
-CLASS_3_FOLDER = "web"
+CLASSES_COUNT = 3
 EXEMPT_SUFFIX = ['avi', 'AVI', 'mp4', 'MP4', 'mov', 'MOV', 'raw', 'RAW', 'ARW', 'arw', 'heic', 'json']
 
 
@@ -64,6 +66,8 @@ class dataloader(dataset.Dataset):
         item_label = image_item['label']
 
         img = Image.open(item_path)
+        img = img.convert("RGB")
+        # print(item_path)
         label = int(item_label)
 
         if self.train:
@@ -77,41 +81,68 @@ class dataloader(dataset.Dataset):
         return self.dataset_len
 
 
+class classifer(nn.Module):
+    def __init__(self, in_ch, num_classes):
+        super(classifer, self).__init__()
+        self.avgpool = nn.AdaptiveAvgPool2d(output_size=(1, 1))
+        self.fc = nn.Linear(in_ch, num_classes)
+
+    def forward(self, x):
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+        # import pdb;pdb.set_trace()
+        return x
+
+
+class EmojiNet(nn.Module):
+    def __init__(self, num_class, pretrained=True):
+        super(EmojiNet, self).__init__()
+        model = models.resnet50(pretrained=pretrained)
+        self.backbone = nn.Sequential(*list(model.children())[:-3])  # 把最后的layer4,Avgpool和Fully Connected Layer去除
+        self.classification_head1 = nn.Sequential(*list(model.children())[-3], classifer(2048, num_class))
+
+    def forward(self, x):
+        x = self.backbone(x)
+        output = self.classification_head1(x)
+        return output
+
+
 def get_model(m_path=None):
-    model = models.resnet18(pretrained=True)
-    # 修改全连接层的输出
-    num_ftrs = model.fc.in_features
-    model.fc = nn.Linear(num_ftrs, 4)
+    model = EmojiNet(pretrained=True, num_class=CLASSES_COUNT)
+    # # 修改全连接层的输出
+    # num_ftrs = model.fc.in_features
+    # model.fc = nn.Linear(num_ftrs, CLASSES_COUNT)
 
-    # 加载模型参数
-    if m_path is not None:
-        checkpoint = torch.load(m_path)
-        model.load_state_dict(checkpoint['model_state_dict'])
-    '''
-    self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
-    self.bn1 = norm_layer(self.inplanes)
-    self.relu = nn.ReLU(inplace=True)
-    self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-    self.layer1 = self._make_layer(block, 64, layers[0])
-    self.layer2 = self._make_layer(block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0])
-    self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
-    self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
-    self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-    self.fc = nn.Linear(512 * block.expansion, num_classes)
-    '''
-    freezd_layer = [model.conv1, model.layer1, model.layer2, model.layer3, model.layer3, model.layer4]
-    no_freeze_layer = [model.fc]
-    optim_param = []
+    # # 加载模型参数
+    # if m_path is not None:
+    #     checkpoint = torch.load(m_path)
+    #     model.load_state_dict(checkpoint['model_state_dict'])
+    # '''
+    # self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
+    # self.bn1 = norm_layer(self.inplanes)
+    # self.relu = nn.ReLU(inplace=True)
+    # self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+    # self.layer1 = self._make_layer(block, 64, layers[0])
+    # self.layer2 = self._make_layer(block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0])
+    # self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
+    # self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
+    # self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+    # self.fc = nn.Linear(512 * block.expansion, num_classes)
+    # '''
+    # freezd_layer = [model.conv1, model.layer1, model.layer2, model.layer3, model.layer3, model.layer4]
+    # no_freeze_layer = [model.fc]
+    # optim_param = []
+    #
+    # for layer in freezd_layer:
+    #     for p in layer.parameters():
+    #         p.requires_grad = False
+    # for layer in no_freeze_layer:
+    #     for p in layer.parameters():
+    #         p.requires_grad = True
+    #         optim_param.append(p)
 
-    for layer in freezd_layer:
-        for p in layer.parameters():
-            p.requires_grad = False
-    for layer in no_freeze_layer:
-        for p in layer.parameters():
-            p.requires_grad = True
-            optim_param.append(p)
-
-    optimizer = torch.optim.SGD(optim_param, lr=learning_rate)
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
     return model, optimizer
 
 
@@ -141,13 +172,19 @@ def train_and_val(train_set_json_path, val_set_json_path):
     model.train()
     model.to(device)
 
+    writer = SummaryWriter(log_dir='./summary/')
     iter_total = 1
+    iter_val_total = 0
+    times_val = 0
     for epoch in range(max_epoch):
         for iter, (image, label) in enumerate(train_loader):
+            image = image.cuda()
+            label = label.cuda()
             logits = model(image)
             loss = loss_function(logits, label)
             print("epoch {}/{}, iter {}/{}, loss = {}".format(epoch+1, max_epoch,
                                                               iter+1, train_mini_batch_number, loss))
+            writer.add_scalar(tag="loss/train", scalar_value=loss, global_step=iter_total-1)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -155,17 +192,26 @@ def train_and_val(train_set_json_path, val_set_json_path):
             if iter_total % val_each_iter == 0:
                 print("its time to val")
                 correct_count = 0
-                for val_iter, (val_image, val_label) in enumerate(val_loader):
-                    val_logits = model(val_image)
-                    val_loss = loss_function(val_logits, val_label)
-                    correct_count += torch.sum(val_label == torch.argmax(val_logits, dim=1, keepdim=False))
-                    print("val, iter {}/{}, loss = {}".format(val_iter + 1, val_mini_batch_number, val_loss))
-                acc = correct_count / (val_mini_batch_number * batch_size)
-                print("val acc= {}".format(acc))
+                with torch.no_grad():
+                    model.eval()
+                    for val_iter, (val_image, val_label) in enumerate(val_loader):
+                        val_image = val_image.cuda()
+                        val_label = val_label.cuda()
+                        val_logits = model(val_image)
+                        val_loss = loss_function(val_logits, val_label)
+                        correct_count += torch.sum(val_label == torch.argmax(val_logits, dim=1, keepdim=False))
+                        print("val, iter {}/{}, loss = {}".format(val_iter + 1, val_mini_batch_number, val_loss))
+                        writer.add_scalar(tag="loss/val", scalar_value=val_loss, global_step=iter_val_total)
+                        iter_val_total += 1
+                    acc = correct_count / (val_mini_batch_number * batch_size)
+                    print("val acc= {}".format(acc))
+                    writer.add_scalar(tag="val_acc", scalar_value=acc, global_step=times_val)
+                    times_val += 1
+                    model.train()
 
             iter_total += 1
     pass
-
+    writer.close()
     torch.save(model, 'emoji_filter_net.pth')
 
 
@@ -194,9 +240,6 @@ def inference(src_path, dist_path):
 
     if not os.path.exists(os.path.join(dist_path, CLASS_2_FOLDER)):
         os.mkdir(os.path.join(dist_path, CLASS_2_FOLDER))
-
-    if not os.path.exists(os.path.join(dist_path, CLASS_3_FOLDER)):
-        os.mkdir(os.path.join(dist_path, CLASS_3_FOLDER))
 
     model = torch.load(model_name)
 
@@ -228,8 +271,6 @@ def inference(src_path, dist_path):
                 mov(filename, CLASS_1_FOLDER)
             elif class_id == 2:
                 mov(filename, CLASS_2_FOLDER)
-            elif class_id == 3:
-                mov(filename, CLASS_3_FOLDER)
             else:
                 raise RuntimeError("class id overflow! ")
 
@@ -238,5 +279,5 @@ def inference(src_path, dist_path):
     pass
 
 if __name__ == "__main__":
-    train_and_val('./data/dataset.json', './data/dataset.json')
+    train_and_val('E:/training_data/dataset.json', 'E:/val_data/dataset.json')
 

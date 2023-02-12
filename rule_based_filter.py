@@ -18,8 +18,8 @@ from PIL import Image
 1. 手机电量/信号标志
 2. 不正常的分辨率
 '''
-SRC_DIR = "D:/iphoneImageBack/src"
-DST_DIR = "D:/iphoneImageBack/dst"
+SRC_DIR = "E:/原始数据"
+DST_DIR = "E:/training_data/emoji"
 EMOJI_FILE_SIZE_THRESHOLD = 1024 * 50  # 50kB
 EMOJI_RESOLUTION_THRESHOLD = 640 * 480
 
