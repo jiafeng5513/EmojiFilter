@@ -1,7 +1,6 @@
 import os
-import exifread
-import shutil
 from PIL import Image
+from utils import *
 
 '''
 已知图库里含有若干种型号已知的相机拍摄的图片和视频,手机屏幕截图,电脑截图,编辑过的图片副本,表情包,网络图片,社交平台上保存到手机的图片,
@@ -23,41 +22,8 @@ DST_DIR = "E:/training_data/emoji"
 EMOJI_FILE_SIZE_THRESHOLD = 1024 * 50  # 50kB
 EMOJI_RESOLUTION_THRESHOLD = 640 * 480
 
-
-def mov(srcfile, dstpath):
-    """
-    move file srcfile to dstpath,
-    :param srcfile: abs filename
-    :param dstpath: dst path
-    :return: None
-    """
-    if not os.path.isfile(srcfile):
-        print("%s not exist!" % (srcfile))
-    else:
-        fpath, fname = os.path.split(srcfile)  # 分离文件名和路径
-        if not os.path.exists(dstpath):
-            os.makedirs(dstpath)  # 创建路径
-        shutil.move(srcfile, os.path.join(dstpath, fname))  # 移动文件
-
-
-def is_shot_by_camera(filename):
-    try:
-        f = open(filename, 'rb')
-
-        tags = exifread.process_file(f)
-        if tags is None:
-            return False
-
-        if 'Image Make' in tags or 'Image Model' in tags:
-            return True
-    except:
-        print('open failed')
-        return True
-    return False
-
-
 if __name__ == '__main__':
-    # size = os.path.getsize(SRC_DIR+'/IMG_0176.JPG')
+
     # print(size)
     for fpathe, dirs, fs in os.walk(SRC_DIR):
         for f in fs:

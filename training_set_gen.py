@@ -1,8 +1,7 @@
-import os
 import json
 from PIL import Image
-import exifread
-
+from GlobalConsts import *
+from utils import *
 '''
 手动创建3个文件夹,分别放置相机拍摄的图片,截屏,表情包
 如果读取到iphone专用格式,相机专用格式,视频格式,直接跳过该图片.
@@ -11,42 +10,6 @@ import exifread
 [height, width, 是否有Image Make信息(0/1), 是否有Image Model信息(0/1), 是否有gps信息(0/1), 文件格式(全局字典累计), 文件大小kb取整]
 '''
 DATA_SET_ROOT = "E:/val_data"
-CLASS_0_FOLDER = "camera"
-CLASS_1_FOLDER = "screen_shot"
-CLASS_2_FOLDER = "emoji"
-EXEMPT_SUFFIX = ['avi', 'AVI', 'mp4', 'MP4', 'mov', 'MOV', 'raw', 'RAW', 'ARW', 'arw', 'heic', 'json']
-SUFFIX_BANK = []
-
-
-def is_shot_by_camera(filename):
-    f = open(filename, 'rb')
-
-    tags = exifread.process_file(f)
-    if tags is None:
-        return False
-
-    if 'Image Make' in tags or 'Image Model' in tags:
-        return True
-
-    return False
-
-
-def get_label_from_filename(filename):
-    label = -1
-    if filename.find(CLASS_0_FOLDER) != -1:
-        label = 0
-    elif filename.find(CLASS_1_FOLDER) != -1:
-        label = 1
-    elif filename.find(CLASS_2_FOLDER) != -1:
-        label = 2
-
-    return label
-
-
-def feature_encode(filename, imagesize, filesize, subfix, exif_tags):
-    # filename, imagesize, filesize
-    # subfix和exif_tags做onehot编码
-    pass
 
 
 if __name__ == '__main__':

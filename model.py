@@ -1,5 +1,3 @@
-import os
-import shutil
 import json
 import torch.nn as nn
 from PIL import Image
@@ -10,21 +8,11 @@ from torch.utils.data import dataset
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
+from GlobalConsts import *
+from utils import *
 
 # global def
 device = torch.device("cuda")  # device
-learning_rate = 1e-3          # init learning rate
-max_epoch = 5                # loop training set by max_epoch times
-batch_size = 16                # mini batch size
-val_each_iter = 100                 # val on each val_iter mini batch
-resize_w = 512                # resize w result in preprocess
-resize_h = 512                # resize h result in preprocess
-model_name = 'emoji_filter_net.pth'  # name of model, for save and load
-CLASS_0_FOLDER = "camera"
-CLASS_1_FOLDER = "screen_shot"
-CLASS_2_FOLDER = "emoji"
-CLASSES_COUNT = 3
-EXEMPT_SUFFIX = ['avi', 'AVI', 'mp4', 'MP4', 'mov', 'MOV', 'raw', 'RAW', 'ARW', 'arw', 'heic', 'json']
 
 
 # dataloader
@@ -182,9 +170,9 @@ def train_and_val(train_set_json_path, val_set_json_path):
             label = label.cuda()
             logits = model(image)
             loss = loss_function(logits, label)
-            print("epoch {}/{}, iter {}/{}, loss = {}".format(epoch+1, max_epoch,
-                                                              iter+1, train_mini_batch_number, loss))
-            writer.add_scalar(tag="loss/train", scalar_value=loss, global_step=iter_total-1)
+            print("epoch {}/{}, iter {}/{}, loss = {}".format(epoch + 1, max_epoch,
+                                                              iter + 1, train_mini_batch_number, loss))
+            writer.add_scalar(tag="loss/train", scalar_value=loss, global_step=iter_total - 1)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -215,31 +203,56 @@ def train_and_val(train_set_json_path, val_set_json_path):
     torch.save(model, 'emoji_filter_net.pth')
 
 
-def mov(srcfile, dstpath):
-    """
-    move file srcfile to dstpath,
-    :param srcfile: abs filename
-    :param dstpath: dst path
-    :return: None
-    """
-    if not os.path.isfile(srcfile):
-        print("%s not exist!" % (srcfile))
-    else:
-        fpath, fname = os.path.split(srcfile)  # 分离文件名和路径
-        if not os.path.exists(dstpath):
-            os.makedirs(dstpath)  # 创建路径
-        shutil.move(srcfile, os.path.join(dstpath, fname))  # 移动文件
+def data_cleaning(src_path, dist_path):
+    for i in range(CLASSES_COUNT):
+        dist_path_i = os.path.join(dist_path, CLASSES_FOLDER[i])
+        if not os.path.exists(dist_path_i):
+            os.mkdir(dist_path_i)
+
+    model = torch.load(model_name)
+
+    inference_transforms = transforms.Compose([
+        transforms.Resize([resize_h, resize_w]),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5], std=[0.5])
+    ])
+
+    import csv
+    with open(os.path.join(src_path, 'data_cleaning.csv'), 'w+', newline='') as csv_file:
+        writer = csv.writer(csv_file)
+
+        for fpathe, dirs, fs in os.walk(src_path):
+            for f in fs:
+                filename = os.path.join(fpathe, f)
+                print(filename)
+                file_subfix = os.path.splitext(filename)[-1].replace('.', '')
+                if file_subfix in EXEMPT_SUFFIX:
+                    print("skip {}".format(filename))
+                    continue
+                ground_truth = get_label_from_filename(filename)
+                img = Image.open(filename)
+                with torch.no_grad():
+                    input_tensor = inference_transforms(img)
+                    infer_logits = model(input_tensor)
+                    class_id = torch.argmax(infer_logits, dim=1, keepdim=False)
+
+                if ground_truth == class_id:
+                    print("{} Classification is correct! ".format(filename))
+                else:
+                    writer.writerow([filename, ground_truth, class_id.data])
+                    if class_id not in range(CLASSES_COUNT):
+                        raise RuntimeError("class id overflow in file {}!".format(filename))
+                    else:
+                        mov_dist = os.path.join(dist_path, CLASSES_FOLDER[class_id])
+                        print("{} Classification is wrong! move to {}".format(filename, mov_dist))
+                        mov(filename, mov_dist)
 
 
 def inference(src_path, dist_path):
-    if not os.path.exists(os.path.join(dist_path, CLASS_0_FOLDER)):
-        os.mkdir(os.path.join(dist_path, CLASS_0_FOLDER))
-
-    if not os.path.exists(os.path.join(dist_path, CLASS_1_FOLDER)):
-        os.mkdir(os.path.join(dist_path, CLASS_1_FOLDER))
-
-    if not os.path.exists(os.path.join(dist_path, CLASS_2_FOLDER)):
-        os.mkdir(os.path.join(dist_path, CLASS_2_FOLDER))
+    for i in range(CLASSES_COUNT):
+        dist_path_i = os.path.join(dist_path, CLASSES_FOLDER[i])
+        if not os.path.exists(dist_path_i):
+            os.mkdir(dist_path_i)
 
     model = torch.load(model_name)
 
@@ -256,6 +269,7 @@ def inference(src_path, dist_path):
             file_subfix = os.path.splitext(filename)[-1].replace('.', '')
             if file_subfix in EXEMPT_SUFFIX:
                 print("skip {}".format(filename))
+                mov(filename,  os.path.join(dist_path, CLASSES_FOLDER[0]))
                 continue
 
             img = Image.open(filename)
@@ -265,19 +279,13 @@ def inference(src_path, dist_path):
                 class_id = torch.argmax(infer_logits, dim=1, keepdim=False)
                 print("class id = {} for {}".format(class_id, filename))
 
-            if class_id == 0:
-                mov(filename, CLASS_0_FOLDER)
-            elif class_id == 1:
-                mov(filename, CLASS_1_FOLDER)
-            elif class_id == 2:
-                mov(filename, CLASS_2_FOLDER)
+            if class_id not in range(CLASSES_COUNT):
+                raise RuntimeError("class id overflow in file {}!".format(filename))
             else:
-                raise RuntimeError("class id overflow! ")
-
-
-
+                mov_dist = os.path.join(dist_path, CLASSES_FOLDER[class_id])
+                mov(filename, mov_dist)
     pass
+
 
 if __name__ == "__main__":
     train_and_val('E:/training_data/dataset.json', 'E:/val_data/dataset.json')
-
