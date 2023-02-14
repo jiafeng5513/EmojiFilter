@@ -1,4 +1,6 @@
 import json
+import os.path
+
 import torch.nn as nn
 from PIL import Image
 import torch
@@ -41,6 +43,9 @@ class dataloader(dataset.Dataset):
         pass
 
     def read_dataset_json(self, json_path):
+        if not os.path.exists(json_path) or not os.path.isfile(json_path):
+            raise RuntimeError("{} is not exists or it is not a regular file!".format(json_path))
+        dataset_root = os.path.dirname(os.path.abspath(json_path))
         with open(json_path, "r") as json_file:
             dataset = json.load(json_file)
         dataset_root = dataset['root']
@@ -49,13 +54,21 @@ class dataloader(dataset.Dataset):
         return dataset_root, dataset_len, images
 
     def __getitem__(self, index):
+        if index not in range(len(self.images)):
+            raise RuntimeError("image index out of range!")
         image_item = self.images[index]
-        item_path = image_item['path']
+
+        item_path = os.path.join(self.dataset_root, image_item['path'])
+        if not os.path.exists(item_path) or not os.path.isfile(item_path):
+            raise RuntimeError("{} is not exists or it is not a regular file!".format(item_path))
+
         item_label = image_item['label']
+        if item_label not in range(CLASSES_COUNT):
+            raise RuntimeError("label = {} of {} is out of range!".format(item_label, item_path))
 
         img = Image.open(item_path)
         img = img.convert("RGB")
-        # print(item_path)
+
         label = int(item_label)
 
         if self.train:

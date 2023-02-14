@@ -2,3 +2,5 @@
 /summary
 *.log
 *.pth
+*.pyc
+__pycache__
