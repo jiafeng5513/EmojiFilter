@@ -203,11 +203,15 @@ def train_and_val(train_set_json_path, val_set_json_path):
     torch.save(model, 'emoji_filter_net.pth')
 
 
-def data_cleaning(src_path, dist_path):
+def make_dist_dir(dist_path):
     for i in range(CLASSES_COUNT):
         dist_path_i = os.path.join(dist_path, CLASSES_FOLDER[i])
         if not os.path.exists(dist_path_i):
             os.mkdir(dist_path_i)
+
+
+def data_cleaning(src_path, dist_path):
+    make_dist_dir(dist_path)
 
     model = torch.load(model_name)
 
@@ -249,10 +253,7 @@ def data_cleaning(src_path, dist_path):
 
 
 def inference(src_path, dist_path):
-    for i in range(CLASSES_COUNT):
-        dist_path_i = os.path.join(dist_path, CLASSES_FOLDER[i])
-        if not os.path.exists(dist_path_i):
-            os.mkdir(dist_path_i)
+    make_dist_dir(dist_path)
 
     model = torch.load(model_name)
 
@@ -269,7 +270,7 @@ def inference(src_path, dist_path):
             file_subfix = os.path.splitext(filename)[-1].replace('.', '')
             if file_subfix in EXEMPT_SUFFIX:
                 print("skip {}".format(filename))
-                mov(filename,  os.path.join(dist_path, CLASSES_FOLDER[0]))
+                mov(filename, os.path.join(dist_path, CLASSES_FOLDER[0]))
                 continue
 
             img = Image.open(filename)
