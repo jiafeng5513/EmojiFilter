@@ -58,7 +58,7 @@ class dataloader(dataset.Dataset):
             raise RuntimeError("image index out of range!")
         image_item = self.images[index]
 
-        item_path = os.path.join(self.dataset_root, image_item['path'])
+        item_path = os.path.join(self.dataset_root, image_item['path'].lstrip('/'))
         if not os.path.exists(item_path) or not os.path.isfile(item_path):
             raise RuntimeError("{} is not exists or it is not a regular file!".format(item_path))
 
@@ -227,7 +227,7 @@ def data_cleaning(src_path, dist_path):
     make_dist_dir(dist_path)
 
     model = torch.load(model_name)
-
+    model.eval()
     inference_transforms = transforms.Compose([
         transforms.Resize([resize_h, resize_w]),
         transforms.ToTensor(),
@@ -235,7 +235,7 @@ def data_cleaning(src_path, dist_path):
     ])
 
     import csv
-    with open(os.path.join(src_path, 'data_cleaning.csv'), 'w+', newline='') as csv_file:
+    with open(os.path.join(dist_path, 'data_cleaning.csv'), 'w+', newline='') as csv_file:
         writer = csv.writer(csv_file)
 
         for fpathe, dirs, fs in os.walk(src_path):
@@ -247,29 +247,32 @@ def data_cleaning(src_path, dist_path):
                     print("skip {}".format(filename))
                     continue
                 ground_truth = get_label_from_filename(filename)
-                img = Image.open(filename)
-                with torch.no_grad():
-                    input_tensor = inference_transforms(img)
-                    infer_logits = model(input_tensor)
-                    class_id = torch.argmax(infer_logits, dim=1, keepdim=False)
+                try:
+                    img = Image.open(filename).convert("RGB")
+                    with torch.no_grad():
+                        input_tensor = inference_transforms(img).unsqueeze(dim=0).cuda()
+                        infer_logits = model(input_tensor)
+                        class_id = torch.argmax(infer_logits, dim=1, keepdim=False).cpu().numpy()[0]
 
-                if ground_truth == class_id:
-                    print("{} Classification is correct! ".format(filename))
-                else:
-                    writer.writerow([filename, ground_truth, class_id.data])
-                    if class_id not in range(CLASSES_COUNT):
-                        raise RuntimeError("class id overflow in file {}!".format(filename))
+                    if ground_truth == class_id:
+                        print("{} Classification is correct! ".format(filename))
                     else:
-                        mov_dist = os.path.join(dist_path, CLASSES_FOLDER[class_id])
-                        print("{} Classification is wrong! move to {}".format(filename, mov_dist))
-                        mov(filename, mov_dist)
+                        writer.writerow([filename, ground_truth, class_id])
+                        if class_id not in range(CLASSES_COUNT):
+                            raise RuntimeError("class id overflow in file {}!".format(filename))
+                        else:
+                            mov_dist = os.path.join(dist_path, CLASSES_FOLDER[class_id])
+                            print("{} Classification is wrong! move to {}".format(filename, mov_dist))
+                            mov(filename, mov_dist)
+                except:
+                    print("exception on {}".format(filename))
 
 
 def inference(src_path, dist_path):
     make_dist_dir(dist_path)
 
     model = torch.load(model_name)
-
+    model.eval()
     inference_transforms = transforms.Compose([
         transforms.Resize([resize_h, resize_w]),
         transforms.ToTensor(),
@@ -303,3 +306,4 @@ def inference(src_path, dist_path):
 
 if __name__ == "__main__":
     train_and_val('E:/training_data/dataset.json', 'E:/val_data/dataset.json')
+    # data_cleaning(src_path='E:/training_data', dist_path='E:/clean_training_data')

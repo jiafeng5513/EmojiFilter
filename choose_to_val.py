@@ -14,6 +14,6 @@ def moveFile(fileDir):
 
 
 if __name__ == '__main__':
-    fileDir = "E:/training_data/screen_shot"  # 源图片文件夹路径
-    tarDir = 'E:/val_data/screen_shot/'  # 移动到新的文件夹路径
+    fileDir = "E:/training_data/emoji"  # 源图片文件夹路径
+    tarDir = 'E:/val_data/emoji/'  # 移动到新的文件夹路径
     moveFile(fileDir)
