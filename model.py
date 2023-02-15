@@ -1,4 +1,5 @@
 import json
+import numpy as np
 import os.path
 
 import torch.nn as nn
@@ -14,7 +15,7 @@ from GlobalConsts import *
 from utils import *
 
 # global def
-device = torch.device("cuda")  # device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # dataloader
@@ -40,6 +41,9 @@ class dataloader(dataset.Dataset):
             transforms.Normalize(mean=[0.5], std=[0.5])
         ])
 
+        self.multimodal_features_transforms = transforms.Compose([
+            transforms.ToTensor(),
+        ])
         pass
 
     def read_dataset_json(self, json_path):
@@ -71,12 +75,16 @@ class dataloader(dataset.Dataset):
 
         label = int(item_label)
 
+        feature_vec = np.array([image_item['image_size'][0], image_item['image_size'][1], image_item['file_size']],
+                               dtype=np.float32)
+        # feature_vec = self.multimodal_features_transforms(feature_vec)
+
         if self.train:
             img = self.train_transforms(img)
         else:
             img = self.test_transforms(img)
 
-        return img, label
+        return img, label, feature_vec
 
     def __len__(self):
         return self.dataset_len
@@ -97,53 +105,46 @@ class classifer(nn.Module):
 
 
 class EmojiNet(nn.Module):
-    def __init__(self, num_class, pretrained=True):
+    def __init__(self, num_class):
         super(EmojiNet, self).__init__()
-        model = models.resnet50(pretrained=pretrained)
-        self.backbone = nn.Sequential(*list(model.children())[:-3])  # 把最后的layer4,Avgpool和Fully Connected Layer去除
-        self.classification_head1 = nn.Sequential(*list(model.children())[-3], classifer(2048, num_class))
+        self.backbone = models.resnet50(
+            weights=models.ResNet50_Weights.IMAGENET1K_V1)  # IMAGENET1K_V1, IMAGENET1K_V2, DEFAULT
+        backbone_output_features = list(self.backbone.children())[-1].out_features
+        self.fc1 = nn.Linear(backbone_output_features, 512 - len(Multimodal_features))
+        self.bn1d = nn.BatchNorm1d(num_features=512)
+        self.fc2 = nn.Linear(512, 256)
+        self.fc3 = nn.Linear(256, 128)
+        self.fc4 = nn.Linear(128, num_class)
 
-    def forward(self, x):
-        x = self.backbone(x)
-        output = self.classification_head1(x)
+    def forward(self, img, multimodal_feature):
+        # img [B, C=3, resize_h, resize_w]
+        # multimodal_feature [B, len(Multimodal_features)]
+        x = self.backbone(img)  # out_features = 1000
+        x = self.fc1(x)
+        x = torch.concat([x, multimodal_feature], dim=1)
+        x = self.bn1d(x)
+        x = self.fc2(x)
+        x = self.fc3(x)
+        x = self.fc4(x)
+        output = x
         return output
 
 
-def get_model(m_path=None):
-    model = EmojiNet(pretrained=True, num_class=CLASSES_COUNT)
-    # # 修改全连接层的输出
-    # num_ftrs = model.fc.in_features
-    # model.fc = nn.Linear(num_ftrs, CLASSES_COUNT)
-
-    # # 加载模型参数
-    # if m_path is not None:
-    #     checkpoint = torch.load(m_path)
-    #     model.load_state_dict(checkpoint['model_state_dict'])
-    # '''
-    # self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
-    # self.bn1 = norm_layer(self.inplanes)
-    # self.relu = nn.ReLU(inplace=True)
-    # self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-    # self.layer1 = self._make_layer(block, 64, layers[0])
-    # self.layer2 = self._make_layer(block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0])
-    # self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
-    # self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
-    # self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-    # self.fc = nn.Linear(512 * block.expansion, num_classes)
-    # '''
-    # freezd_layer = [model.conv1, model.layer1, model.layer2, model.layer3, model.layer3, model.layer4]
-    # no_freeze_layer = [model.fc]
-    # optim_param = []
+def get_model():
+    model = EmojiNet(num_class=CLASSES_COUNT)
+    freezd_layer = [model.backbone]
+    no_freeze_layer = [model.fc1, model.fc2, model.fc3, model.fc4, model.bn1d]
+    optim_param = []
     #
-    # for layer in freezd_layer:
-    #     for p in layer.parameters():
-    #         p.requires_grad = False
-    # for layer in no_freeze_layer:
-    #     for p in layer.parameters():
-    #         p.requires_grad = True
-    #         optim_param.append(p)
+    for layer in freezd_layer:
+        for p in layer.parameters():
+            p.requires_grad = False
+    for layer in no_freeze_layer:
+        for p in layer.parameters():
+            p.requires_grad = True
+            optim_param.append(p)
 
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.SGD(optim_param, lr=learning_rate)
     return model, optimizer
 
 
@@ -172,16 +173,19 @@ def train_and_val(train_set_json_path, val_set_json_path):
     model, optimizer = get_model()
     model.train()
     model.to(device)
+    print(model)
 
     writer = SummaryWriter(log_dir='./summary/')
     iter_total = 1
     iter_val_total = 0
     times_val = 0
     for epoch in range(max_epoch):
-        for iter, (image, label) in enumerate(train_loader):
-            image = image.cuda()
-            label = label.cuda()
-            logits = model(image)
+        for iter, (image, label, feature) in enumerate(train_loader):
+            image = image.to(device)
+            label = label.to(device)
+            feature = feature.to(device)
+
+            logits = model(image, feature)
             loss = loss_function(logits, label)
             print("epoch {}/{}, iter {}/{}, loss = {}".format(epoch + 1, max_epoch,
                                                               iter + 1, train_mini_batch_number, loss))
@@ -196,8 +200,8 @@ def train_and_val(train_set_json_path, val_set_json_path):
                 with torch.no_grad():
                     model.eval()
                     for val_iter, (val_image, val_label) in enumerate(val_loader):
-                        val_image = val_image.cuda()
-                        val_label = val_label.cuda()
+                        val_image = val_image.to(device)
+                        val_label = val_label.to(device)
                         val_logits = model(val_image)
                         val_loss = loss_function(val_logits, val_label)
                         correct_count += torch.sum(val_label == torch.argmax(val_logits, dim=1, keepdim=False))
@@ -250,7 +254,7 @@ def data_cleaning(src_path, dist_path):
                 try:
                     img = Image.open(filename).convert("RGB")
                     with torch.no_grad():
-                        input_tensor = inference_transforms(img).unsqueeze(dim=0).cuda()
+                        input_tensor = inference_transforms(img).unsqueeze(dim=0).to(device)
                         infer_logits = model(input_tensor)
                         class_id = torch.argmax(infer_logits, dim=1, keepdim=False).cpu().numpy()[0]
 
@@ -305,5 +309,6 @@ def inference(src_path, dist_path):
 
 
 if __name__ == "__main__":
-    train_and_val('E:/training_data/dataset.json', 'E:/val_data/dataset.json')
+    train_and_val(train_set_json_path='./data/dataset.json',
+                  val_set_json_path='./data/dataset.json')
     # data_cleaning(src_path='E:/training_data', dist_path='E:/clean_training_data')

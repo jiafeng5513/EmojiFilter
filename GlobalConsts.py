@@ -8,3 +8,4 @@ model_name = 'emoji_filter_net.pth'  # name of model, for save and load
 CLASSES_FOLDER = ["camera", "screen_shot", "emoji"]
 CLASSES_COUNT = len(CLASSES_FOLDER)
 EXEMPT_SUFFIX = ['avi', 'AVI', 'mp4', 'MP4', 'mov', 'MOV', 'raw', 'RAW', 'ARW', 'arw', 'heic', 'json', 'csv']
+Multimodal_features = ['image_width', 'image_height', 'filesize']
