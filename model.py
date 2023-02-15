@@ -1,11 +1,10 @@
 import json
 import numpy as np
 import os.path
+from PIL import Image
 
 import torch.nn as nn
-from PIL import Image
 import torch
-import torchvision.transforms as transforms
 import torchvision.models as models
 from torch.utils.data import dataset
 import torch.nn.functional as F
@@ -26,24 +25,10 @@ class dataloader(dataset.Dataset):
         self.train = train
 
         # train预处理
-        self.train_transforms = transforms.Compose([
-            transforms.Resize([resize_h, resize_w]),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomVerticalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5], std=[0.5])
-        ])
+        self.train_transforms = TRAINING_TRANS
 
         # test预处理
-        self.test_transforms = transforms.Compose([
-            transforms.Resize([resize_h, resize_w]),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5], std=[0.5])
-        ])
-
-        self.multimodal_features_transforms = transforms.Compose([
-            transforms.ToTensor(),
-        ])
+        self.test_transforms = INFERENCE_TRANS
         pass
 
     def read_dataset_json(self, json_path):
@@ -77,7 +62,6 @@ class dataloader(dataset.Dataset):
 
         feature_vec = np.array([image_item['image_size'][0], image_item['image_size'][1], image_item['file_size']],
                                dtype=np.float32)
-        # feature_vec = self.multimodal_features_transforms(feature_vec)
 
         if self.train:
             img = self.train_transforms(img)
@@ -175,7 +159,16 @@ def train_and_val(train_set_json_path, val_set_json_path):
     model.to(device)
     print(model)
 
-    writer = SummaryWriter(log_dir='./summary/')
+    if os.path.exists(TENSORBOARD_SUMMARY_DIR):
+        shutil.rmtree(TENSORBOARD_SUMMARY_DIR)
+    os.makedirs(TENSORBOARD_SUMMARY_DIR)
+
+    writer = SummaryWriter(log_dir=TENSORBOARD_SUMMARY_DIR)
+
+    dummy_image = torch.rand(batch_size, 3, resize_h, resize_w).to(device)
+    dummy_feature = torch.rand(batch_size, len(Multimodal_features)).to(device)
+    writer.add_graph(model=model, input_to_model=[dummy_image, dummy_feature])
+
     iter_total = 1
     iter_val_total = 0
     times_val = 0
@@ -217,7 +210,7 @@ def train_and_val(train_set_json_path, val_set_json_path):
             iter_total += 1
     pass
     writer.close()
-    torch.save(model, 'emoji_filter_net.pth')
+    torch.save(model, MODEL_NAME)
 
 
 def make_dist_dir(dist_path):
@@ -227,61 +220,33 @@ def make_dist_dir(dist_path):
             os.mkdir(dist_path_i)
 
 
-def data_cleaning(src_path, dist_path):
+def inference(src_path, dist_path, is_data_cleaning=False):
+    """
+    inference & data cleaning
+    in data_cleaning mode, if a picture is considered as something(result) different with its label,
+        this picture will be moved to dist_path/${result}, this function will read label from file path,
+        so the src_path must put all the pictures into folders named as classes name defined in CLASSES_FOLDER.
+        files with suffix in EXEMPT_SUFFIX will be skipped and left in place.
+    in inference mode, the src_path can be any format like ${src_path}/${time}/filename.jpg or others.
+        this function will move picture to dist_path/${result}/${time}/filename.jpg,
+        just replace ${src_path} with dist_path/${result},
+        files with suffix in EXEMPT_SUFFIX will be considered as CLASSES_FOLDER[0], for now it is "camera".
+    :param src_path: input root.
+    :param dist_path: path to move and classify
+    :param is_data_cleaning: True=data_cleaning mode, False=inference mode
+    :return: None
+    """
     make_dist_dir(dist_path)
 
-    model = torch.load(model_name)
+    model = torch.load(MODEL_NAME)
     model.eval()
-    inference_transforms = transforms.Compose([
-        transforms.Resize([resize_h, resize_w]),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5], std=[0.5])
-    ])
 
-    import csv
-    with open(os.path.join(dist_path, 'data_cleaning.csv'), 'w+', newline='') as csv_file:
+    inference_transforms = INFERENCE_TRANS
+
+    if is_data_cleaning:
+        import csv
+        csv_file = open(os.path.join(dist_path, 'data_cleaning.csv'), 'w+', newline='')
         writer = csv.writer(csv_file)
-
-        for fpathe, dirs, fs in os.walk(src_path):
-            for f in fs:
-                filename = os.path.join(fpathe, f)
-                print(filename)
-                file_subfix = os.path.splitext(filename)[-1].replace('.', '')
-                if file_subfix in EXEMPT_SUFFIX:
-                    print("skip {}".format(filename))
-                    continue
-                ground_truth = get_label_from_filename(filename)
-                try:
-                    img = Image.open(filename).convert("RGB")
-                    with torch.no_grad():
-                        input_tensor = inference_transforms(img).unsqueeze(dim=0).to(device)
-                        infer_logits = model(input_tensor)
-                        class_id = torch.argmax(infer_logits, dim=1, keepdim=False).cpu().numpy()[0]
-
-                    if ground_truth == class_id:
-                        print("{} Classification is correct! ".format(filename))
-                    else:
-                        writer.writerow([filename, ground_truth, class_id])
-                        if class_id not in range(CLASSES_COUNT):
-                            raise RuntimeError("class id overflow in file {}!".format(filename))
-                        else:
-                            mov_dist = os.path.join(dist_path, CLASSES_FOLDER[class_id])
-                            print("{} Classification is wrong! move to {}".format(filename, mov_dist))
-                            mov(filename, mov_dist)
-                except:
-                    print("exception on {}".format(filename))
-
-
-def inference(src_path, dist_path):
-    make_dist_dir(dist_path)
-
-    model = torch.load(model_name)
-    model.eval()
-    inference_transforms = transforms.Compose([
-        transforms.Resize([resize_h, resize_w]),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5], std=[0.5])
-    ])
 
     for fpathe, dirs, fs in os.walk(src_path):
         for f in fs:
@@ -289,23 +254,52 @@ def inference(src_path, dist_path):
             print(filename)
             file_subfix = os.path.splitext(filename)[-1].replace('.', '')
             if file_subfix in EXEMPT_SUFFIX:
-                print("skip {}".format(filename))
-                mov(filename, os.path.join(dist_path, CLASSES_FOLDER[0]))
+                if is_data_cleaning:
+                    print("skip {}".format(filename))
+                else:
+                    dist = os.path.join(dist_path, CLASSES_FOLDER[0], os.path.relpath(filename, dist_path))
+                    print("{} mov to {} because EXEMPT_SUFFIX".format(filename, dist))
+                    mov(filename, dist)
                 continue
 
-            img = Image.open(filename)
-            with torch.no_grad():
-                input_tensor = inference_transforms(img)
-                infer_logits = model(input_tensor)
-                class_id = torch.argmax(infer_logits, dim=1, keepdim=False)
-                print("class id = {} for {}".format(class_id, filename))
+            try:
+                img = Image.open(filename)
+                img_size = img.size
+                file_size = os.path.getsize(filename)
 
-            if class_id not in range(CLASSES_COUNT):
-                raise RuntimeError("class id overflow in file {}!".format(filename))
-            else:
-                mov_dist = os.path.join(dist_path, CLASSES_FOLDER[class_id])
-                mov(filename, mov_dist)
-    pass
+                with torch.no_grad():
+                    img_tensor = inference_transforms(img.convert("RGB")).unsqueeze(dim=0).to(device)
+                    feature_tensor = torch.from_numpy(np.array([img_size[0], img_size[1], file_size],
+                                                               dtype=np.float32)).to(device)
+
+                    infer_logits = model(img_tensor, feature_tensor)
+                    class_id = torch.argmax(infer_logits, dim=1, keepdim=False).cpu().numpy()[0]
+
+                if class_id not in range(CLASSES_COUNT):
+                    raise RuntimeError("class id overflow in file {}!".format(filename))
+
+                if is_data_cleaning:
+                    ground_truth = get_label_from_filename(filename)
+                    if ground_truth == class_id:
+                        print("{} Classification is correct! ".format(filename))
+                    else:
+                        writer.writerow([filename, ground_truth, class_id])
+                        mov_dist = os.path.join(dist_path, CLASSES_FOLDER[class_id])
+                        print("{} Classification is wrong! move to {}".format(filename, mov_dist))
+                        mov(filename, mov_dist)
+                else:
+                    dist = os.path.join(dist_path, CLASSES_FOLDER[class_id], os.path.relpath(filename, dist_path))
+                    print("{} is {}, move to {}".format(filename, CLASSES_FOLDER[class_id], dist))
+                    mov(filename, dist)
+            except:
+                print("exception on {}".format(filename))
+
+            # end of try
+        # end of "for f in fs"
+    # end of "os.walk"
+
+    if is_data_cleaning:
+        csv_file.close()
 
 
 if __name__ == "__main__":
