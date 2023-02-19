@@ -9,7 +9,7 @@ import torchvision.models as models
 from torch.utils.data import dataset
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
-
+import cv2
 from GlobalConsts import *
 from utils import *
 
@@ -129,11 +129,23 @@ def get_model():
             optim_param.append(p)
 
     optimizer = torch.optim.SGD(optim_param, lr=learning_rate)
-    return model, optimizer
+    step_schedule = torch.optim.lr_scheduler.StepLR(step_size=100, gamma=0.9, optimizer=optimizer)
+    return model, optimizer, step_schedule
 
 
 def loss_function(logits, target):
-    return F.cross_entropy(logits, target)
+    zero_logits = torch.zeros_like(logits)
+    one_logits = torch.ones_like(logits)
+    logits_bin = torch.where(logits > 0, one_logits, zero_logits)
+
+    zero_target = torch.zeros_like(target)
+    one_target = torch.ones_like(target)
+    target_bin = torch.where(target > 0, one_target, zero_target)
+
+    loss_a = F.cross_entropy(logits_bin, target_bin)
+    loss_b = F.cross_entropy(logits, target)
+    loss = alpha * loss_a + beta * loss_b
+    return loss_a, loss_b, loss
 
 
 def train_and_val(train_set_json_path, val_set_json_path):
@@ -154,7 +166,7 @@ def train_and_val(train_set_json_path, val_set_json_path):
     train_mini_batch_number = len(train_loader)
     val_mini_batch_number = len(val_loader)
 
-    model, optimizer = get_model()
+    model, optimizer, step_schedule = get_model()
     model.train()
     model.to(device)
     print(model)
@@ -179,31 +191,37 @@ def train_and_val(train_set_json_path, val_set_json_path):
             feature = feature.to(device)
 
             logits = model(image, feature)
-            loss = loss_function(logits, label)
+            loss_a, loss_b, loss = loss_function(logits, label)
             print("epoch {}/{}, iter {}/{}, loss = {}".format(epoch + 1, max_epoch,
                                                               iter + 1, train_mini_batch_number, loss))
-            writer.add_scalar(tag="loss/train", scalar_value=loss, global_step=iter_total - 1)
+            writer.add_scalar(tag="train/loss", scalar_value=loss, global_step=iter_total - 1)
+            writer.add_scalar(tag="train/loss_a", scalar_value=loss_a, global_step=iter_total - 1)
+            writer.add_scalar(tag="train/loss_b", scalar_value=loss_b, global_step=iter_total - 1)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-
+            step_schedule.step()
+            writer.add_scalar(tag="train/lr", scalar_value=step_schedule.get_last_lr()[0], global_step=iter_total - 1)
             if iter_total % val_each_iter == 0:
                 print("its time to val")
                 correct_count = 0
                 with torch.no_grad():
                     model.eval()
-                    for val_iter, (val_image, val_label) in enumerate(val_loader):
+                    for val_iter, (val_image, val_label, feature) in enumerate(val_loader):
                         val_image = val_image.to(device)
                         val_label = val_label.to(device)
-                        val_logits = model(val_image)
-                        val_loss = loss_function(val_logits, val_label)
+                        feature = feature.to(device)
+                        val_logits = model(val_image, feature)
+                        val_loss_a, val_loss_b, val_loss = loss_function(val_logits, val_label)
                         correct_count += torch.sum(val_label == torch.argmax(val_logits, dim=1, keepdim=False))
                         print("val, iter {}/{}, loss = {}".format(val_iter + 1, val_mini_batch_number, val_loss))
-                        writer.add_scalar(tag="loss/val", scalar_value=val_loss, global_step=iter_val_total)
+                        writer.add_scalar(tag="val/loss", scalar_value=val_loss, global_step=iter_val_total)
+                        writer.add_scalar(tag="val/loss_a", scalar_value=val_loss_a, global_step=iter_val_total)
+                        writer.add_scalar(tag="val/loss_b", scalar_value=val_loss_b, global_step=iter_val_total)
                         iter_val_total += 1
                     acc = correct_count / (val_mini_batch_number * batch_size)
                     print("val acc= {}".format(acc))
-                    writer.add_scalar(tag="val_acc", scalar_value=acc, global_step=times_val)
+                    writer.add_scalar(tag="val/acc", scalar_value=acc, global_step=times_val)
                     times_val += 1
                     model.train()
 
@@ -302,7 +320,79 @@ def inference(src_path, dist_path, is_data_cleaning=False):
         csv_file.close()
 
 
+def tensor_to_cv_mat(input_tensor):
+    if input_tensor.shape[0] != 1:
+        raise RuntimeError("only tensor with shape [1, C, H, W] can be trans to cmMat!")
+    mat = input_tensor.cpu().squeeze().numpy()
+    mat = (mat * 0.5 + 0.5) * 255
+    mat = np.uint8(mat)
+    mat = mat.transpose(1, 2, 0)
+    mat = cv2.cvtColor(mat, cv2.COLOR_RGB2BGR)
+    return mat
+
+
+def visual_inference(val_set_json_path):
+    val_dataset = dataloader(json_path=val_set_json_path, train=False)
+
+    val_loader = torch.utils.data.dataloader.DataLoader(
+        dataset=val_dataset,
+        batch_size=1,
+        shuffle=False
+    )
+
+    val_mini_batch_number = len(val_loader)
+
+    model = torch.load(MODEL_NAME)
+    model.eval()
+    save_count = 0
+    for val_iter, (val_image, val_label, feature) in enumerate(val_loader):
+        val_image = val_image.to(device)
+        val_label = val_label.to(device)
+        feature = feature.to(device)
+        with torch.no_grad():
+            val_logits = model(val_image, feature)
+        val_loss_a, val_loss_b, val_loss = loss_function(val_logits, val_label)
+        val_result = torch.argmax(val_logits, dim=1, keepdim=False).cpu().numpy()[0]
+
+        gt = val_label.cpu().numpy()[0]
+        print("val, iter {}/{}, loss = {}, gt={}, result = {}".format(val_iter + 1, val_mini_batch_number, val_loss, gt, val_result))
+
+
+
+        if val_loss >= 0.6 or (gt != val_result):
+            img_to_show = tensor_to_cv_mat(val_image)
+            img_with_text = cv2.putText(img_to_show, "loss = {:.4f}".format(val_loss), (10, 22),
+                                        cv2.FONT_HERSHEY_SIMPLEX,
+                                        1.0, (0, 0, 255), 2, cv2.LINE_AA, False)
+
+            img_with_text = cv2.putText(img_with_text, "gt={}, result = {}".format(gt, val_result), (10, 45),
+                                        cv2.FONT_HERSHEY_SIMPLEX,
+                                        1.0, (0, 0, 255), 2, cv2.LINE_AA, False)
+            cv2.imwrite('E:/corner_case/{}.png'.format(save_count), img_with_text)
+            save_count += 1
+            print("save")
+        # cv2.imshow("img", img_with_text)
+        # cv2.waitKey()
+
+    pass
+
+
 if __name__ == "__main__":
-    train_and_val(train_set_json_path='./data/dataset.json',
-                  val_set_json_path='./data/dataset.json')
+    # train_and_val(train_set_json_path='E:/training_data/dataset.json',
+    #               val_set_json_path='E:/val_data/dataset.json')
+
+    visual_inference(val_set_json_path='E:/val_data/dataset.json')
     # data_cleaning(src_path='E:/training_data', dist_path='E:/clean_training_data')
+
+    # y_np = np.array([0, 1, 2, 0, 1, 2])
+    # y_tensor = torch.from_numpy(y_np)
+    #
+    # zero = torch.zeros_like(y_tensor)
+    # one = torch.ones_like(y_tensor)
+    # y_tensor_bin = torch.where(y_tensor > 0, one, zero)
+    #
+    # print("y_tensor = {}".format(y_tensor))
+    # print("y_tensor_bin = {}".format(y_tensor_bin))
+    #
+    # gt_np = np.array([0, 1, 2, 0, 1, 2])
+    # gt_tensor = torch.from_numpy(gt_np)
