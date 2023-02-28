@@ -378,10 +378,10 @@ def visual_inference(val_set_json_path):
 
 
 if __name__ == "__main__":
-    # train_and_val(train_set_json_path='E:/training_data/dataset.json',
-    #               val_set_json_path='E:/val_data/dataset.json')
-
-    visual_inference(val_set_json_path='E:/val_data/dataset.json')
+    train_and_val(train_set_json_path='E:/training_data/dataset.json',
+                  val_set_json_path='E:/val_data/dataset.json')
+    #
+    # visual_inference(val_set_json_path='E:/val_data/dataset.json')
     # data_cleaning(src_path='E:/training_data', dist_path='E:/clean_training_data')
 
     # y_np = np.array([0, 1, 2, 0, 1, 2])

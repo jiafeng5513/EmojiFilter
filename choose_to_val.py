@@ -1,7 +1,7 @@
 import os, random, shutil
 
 
-def moveFile(fileDir):
+def moveFile(fileDir, tarDir):
     pathDir = os.listdir(fileDir)  # 取图片的原始路径
     filenumber = len(pathDir)
     rate = 0.1  # 自定义抽取图片的比例，比方说100张抽10张，那就是0.1
@@ -14,6 +14,12 @@ def moveFile(fileDir):
 
 
 if __name__ == '__main__':
-    fileDir = "E:/training_data/emoji"  # 源图片文件夹路径
-    tarDir = 'E:/val_data/emoji/'  # 移动到新的文件夹路径
-    moveFile(fileDir)
+    training_root = 'E:/training_data/'
+    val_root = 'E:/val_data/'
+
+    cat = ['camera', 'screen_shot', 'emoji']
+
+    for item in cat:
+        src = os.path.join(training_root, item)
+        dst = os.path.join(val_root, item)
+        moveFile(src, dst)
