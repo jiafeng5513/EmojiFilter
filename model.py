@@ -96,28 +96,41 @@ class EmojiNet(nn.Module):
         backbone_output_features = list(self.backbone.children())[-1].out_features
         self.fc1 = nn.Linear(backbone_output_features, 512 - len(Multimodal_features))
         self.bn1d = nn.BatchNorm1d(num_features=512)
-        self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, 128)
-        self.fc4 = nn.Linear(128, num_class)
+        self.fc2 = nn.Linear(512, 512)
+        self.fc3 = nn.Linear(512, 256)
+        self.fc4 = nn.Linear(256, 128)
+        self.fc5 = nn.Linear(128, num_class)
+        # self.fc5 = nn.Linear(64, 32)
+        # self.fc6 = nn.Linear(32, 16)
+        # self.fc7 = nn.Linear(16, num_class)
 
     def forward(self, img, multimodal_feature):
         # img [B, C=3, resize_h, resize_w]
         # multimodal_feature [B, len(Multimodal_features)]
         x = self.backbone(img)  # out_features = 1000
         x = self.fc1(x)
+        # multimodal_feature = multimodal_feature * 0.001
         x = torch.concat([x, multimodal_feature], dim=1)
         x = self.bn1d(x)
+        # x = torch.relu(x)
         x = self.fc2(x)
+        # x = torch.relu(x)
         x = self.fc3(x)
+        x = torch.relu(x)
         x = self.fc4(x)
-        output = x
+        x = self.fc5(x)
+        # x = self.fc6(x)
+        # x = self.fc7(x)
+        output = torch.nn.functional.softmax(x, dim=1)
         return output
 
 
 def get_model():
     model = EmojiNet(num_class=CLASSES_COUNT)
-    freezd_layer = [model.backbone]
-    no_freeze_layer = [model.fc1, model.fc2, model.fc3, model.fc4, model.bn1d]
+    freezd_layer = [model.backbone.conv1, model.backbone.bn1, model.backbone.relu, model.backbone.maxpool,
+                    model.backbone.layer1, model.backbone.layer2, model.backbone.layer3]
+    no_freeze_layer = [model.backbone.layer4, model.backbone.maxpool, model.backbone.fc,
+                       model.fc1, model.fc2, model.fc3, model.fc4, model.fc5, model.bn1d]
     optim_param = []
     #
     for layer in freezd_layer:
@@ -134,16 +147,16 @@ def get_model():
 
 
 def loss_function(logits, target):
-    zero_logits = torch.zeros_like(logits)
-    one_logits = torch.ones_like(logits)
-    logits_bin = torch.where(logits > 0, one_logits, zero_logits)
+    logits_bin = torch.zeros([logits.shape[0], 2]).to(device)
+    logits_bin[:, 0] = logits[:, 0]
+    logits_bin[:, 1] = torch.sum(logits[:, 1:], dim=1)
 
-    zero_target = torch.zeros_like(target)
     one_target = torch.ones_like(target)
-    target_bin = torch.where(target > 0, one_target, zero_target)
+    zero_target = torch.zeros_like(target)
+    target_bin = torch.where(target == 0, zero_target, one_target)
 
-    loss_a = F.cross_entropy(logits_bin, target_bin)
-    loss_b = F.cross_entropy(logits, target)
+    loss_a = F.cross_entropy(logits_bin, target_bin)  # camera or not
+    loss_b = F.cross_entropy(logits, target)  # all class
     loss = alpha * loss_a + beta * loss_b
     return loss_a, loss_b, loss
 
@@ -205,6 +218,7 @@ def train_and_val(train_set_json_path, val_set_json_path):
             if iter_total % val_each_iter == 0:
                 print("its time to val")
                 correct_count = 0
+                camera_correct_count = 0
                 with torch.no_grad():
                     model.eval()
                     for val_iter, (val_image, val_label, feature) in enumerate(val_loader):
@@ -213,15 +227,28 @@ def train_and_val(train_set_json_path, val_set_json_path):
                         feature = feature.to(device)
                         val_logits = model(val_image, feature)
                         val_loss_a, val_loss_b, val_loss = loss_function(val_logits, val_label)
-                        correct_count += torch.sum(val_label == torch.argmax(val_logits, dim=1, keepdim=False))
+                        val_result = torch.argmax(val_logits, dim=1, keepdim=False)
+                        correct_count += torch.sum(val_label == val_result)
+
+                        one_target = torch.ones_like(val_label)
+                        zero_target = torch.zeros_like(val_label)
+                        val_label_bin = torch.where(val_label == 0, zero_target, one_target)
+
+                        one_result = torch.ones_like(val_result)
+                        zero_result = torch.zeros_like(val_result)
+                        val_result_bin = torch.where(val_result == 0, zero_result, one_result)
+
+                        camera_correct_count += torch.sum(val_result_bin == val_label_bin)
                         print("val, iter {}/{}, loss = {}".format(val_iter + 1, val_mini_batch_number, val_loss))
                         writer.add_scalar(tag="val/loss", scalar_value=val_loss, global_step=iter_val_total)
                         writer.add_scalar(tag="val/loss_a", scalar_value=val_loss_a, global_step=iter_val_total)
                         writer.add_scalar(tag="val/loss_b", scalar_value=val_loss_b, global_step=iter_val_total)
                         iter_val_total += 1
                     acc = correct_count / (val_mini_batch_number * batch_size)
-                    print("val acc= {}".format(acc))
+                    camera_acc = camera_correct_count / (val_mini_batch_number * batch_size)
+                    print("val acc = {}, camera acc = {}".format(acc, camera_acc))
                     writer.add_scalar(tag="val/acc", scalar_value=acc, global_step=times_val)
+                    writer.add_scalar(tag="val/camera acc", scalar_value=camera_acc, global_step=times_val)
                     times_val += 1
                     model.train()
 
@@ -355,9 +382,8 @@ def visual_inference(val_set_json_path):
         val_result = torch.argmax(val_logits, dim=1, keepdim=False).cpu().numpy()[0]
 
         gt = val_label.cpu().numpy()[0]
-        print("val, iter {}/{}, loss = {}, gt={}, result = {}".format(val_iter + 1, val_mini_batch_number, val_loss, gt, val_result))
-
-
+        print("val, iter {}/{}, loss = {}, gt={}, result = {}".format(val_iter + 1, val_mini_batch_number, val_loss, gt,
+                                                                      val_result))
 
         if val_loss >= 0.6 or (gt != val_result):
             img_to_show = tensor_to_cv_mat(val_image)

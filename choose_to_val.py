@@ -1,4 +1,5 @@
 import os, random, shutil
+from GlobalConsts import CLASSES_FOLDER
 
 
 def moveFile(fileDir, tarDir):
@@ -17,9 +18,7 @@ if __name__ == '__main__':
     training_root = 'E:/training_data/'
     val_root = 'E:/val_data/'
 
-    cat = ['camera', 'screen_shot', 'emoji']
-
-    for item in cat:
+    for item in CLASSES_FOLDER:
         src = os.path.join(training_root, item)
         dst = os.path.join(val_root, item)
         moveFile(src, dst)
