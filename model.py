@@ -91,8 +91,20 @@ class classifer(nn.Module):
 class EmojiNet(nn.Module):
     def __init__(self, num_class):
         super(EmojiNet, self).__init__()
-        self.backbone = models.resnet50(
-            weights=models.ResNet50_Weights.IMAGENET1K_V1)  # IMAGENET1K_V1, IMAGENET1K_V2, DEFAULT
+        self.backbone = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
+        # IMAGENET1K_V1: 76.130, IMAGENET1K_V2: 80.858, DEFAULT
+        from efficientnet_pytorch import EfficientNet
+        self.backbone = EfficientNet.from_pretrained('efficientnet-b0')
+        feature = self.backbone._fc.in_features
+        self.backbone._fc = nn.Linear(in_features=feature, out_features=50, bias=True)
+        print(self.backbone)
+        # from efficientnet_pytorch import EfficientNet
+        # from torch import nn
+        # model = EfficientNet.from_pretrained('efficientnet-b5')
+        # feature = model._fc.in_features
+        # model._fc = nn.Linear(in_features=feature, out_features=50, bias=True)
+
+
         backbone_output_features = list(self.backbone.children())[-1].out_features
         self.fc1 = nn.Linear(backbone_output_features, 512 - len(Multimodal_features))
         self.bn1d = nn.BatchNorm1d(num_features=512)
