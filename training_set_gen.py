@@ -13,7 +13,7 @@ from utils import *
 [height, width, 是否有Image Make信息(0/1), 是否有Image Model信息(0/1), 是否有gps信息(0/1), 文件格式(全局字典累计), 文件大小kb取整]
 '''
 # DATA_SET_ROOT = "E:/val_data"
-DATA_SET_ROOT = "E:/training_data"
+DATA_SET_ROOT = "./data"
 
 if __name__ == '__main__':
     imageList = []
