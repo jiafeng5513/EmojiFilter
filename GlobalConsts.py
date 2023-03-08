@@ -1,7 +1,7 @@
 import torchvision.transforms as transforms
 
 learning_rate = 5e-4  # init learning rate
-max_epoch = 20  # loop training set by max_epoch times
+max_epoch = 30  # loop training set by max_epoch times
 batch_size = 32  # mini batch size
 val_each_iter = 100  # val on each val_iter mini batch
 resize_w = 512  # resize w result in preprocess

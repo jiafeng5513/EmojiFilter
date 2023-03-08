@@ -150,7 +150,7 @@ class EmojiNet2(nn.Module):
 
 
         # backbone_output_features = list(self.backbone.children())[-1].out_features
-        # self.fc1 = nn.Linear(backbone_output_features, 512 - len(Multimodal_features))
+        # self.fc1 = nn.Linear(1024, 512 - len(Multimodal_features))
         # self.bn1d = nn.BatchNorm1d(num_features=512)
         # self.fc2 = nn.Linear(512, 512)
         # self.fc3 = nn.Linear(512, 256)
@@ -463,8 +463,8 @@ def visual_inference(val_set_json_path):
 
 
 if __name__ == "__main__":
-    train_and_val(train_set_json_path='./data/dataset.json',
-                  val_set_json_path='./data/dataset.json')
+    train_and_val(train_set_json_path='E:/training_data/dataset.json',
+                  val_set_json_path='E:/val_data/dataset.json')
 
 
     # visual_inference(val_set_json_path='E:/val_data/dataset.json')
