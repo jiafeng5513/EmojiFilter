@@ -238,7 +238,7 @@ def train_and_val(train_set_json_path, val_set_json_path):
     train_mini_batch_number = len(train_loader)
     val_mini_batch_number = len(val_loader)
 
-    model, optimizer, step_schedule = get_model2()
+    model, optimizer, step_schedule = get_model()
     model.train()
     model.to(device)
     print(model)
@@ -417,7 +417,7 @@ def tensor_to_cv_mat(input_tensor):
     return mat
 
 
-def visual_inference(val_set_json_path):
+def visual_inference(val_set_json_path, max_loss):
     val_dataset = dataloader(json_path=val_set_json_path, train=False)
 
     val_loader = torch.utils.data.dataloader.DataLoader(
@@ -444,13 +444,13 @@ def visual_inference(val_set_json_path):
         print("val, iter {}/{}, loss = {}, gt={}, result = {}".format(val_iter + 1, val_mini_batch_number, val_loss, gt,
                                                                       val_result))
 
-        if val_loss >= 0.6 or (gt != val_result):
+        if val_loss >= max_loss or (gt != val_result):
             img_to_show = tensor_to_cv_mat(val_image)
             img_with_text = cv2.putText(img_to_show, "loss = {:.4f}".format(val_loss), (10, 22),
                                         cv2.FONT_HERSHEY_SIMPLEX,
                                         1.0, (0, 0, 255), 2, cv2.LINE_AA, False)
 
-            img_with_text = cv2.putText(img_with_text, "gt={}, result = {}".format(gt, val_result), (10, 45),
+            img_with_text = cv2.putText(img_with_text, "gt={}, result = {}".format(CLASSES_FOLDER[gt], CLASSES_FOLDER[val_result]), (10, 45),
                                         cv2.FONT_HERSHEY_SIMPLEX,
                                         1.0, (0, 0, 255), 2, cv2.LINE_AA, False)
             cv2.imwrite('E:/corner_case/{}.png'.format(save_count), img_with_text)
@@ -465,9 +465,8 @@ def visual_inference(val_set_json_path):
 if __name__ == "__main__":
     train_and_val(train_set_json_path='E:/training_data/dataset.json',
                   val_set_json_path='E:/val_data/dataset.json')
-
-
-    # visual_inference(val_set_json_path='E:/val_data/dataset.json')
+    #
+    # visual_inference(val_set_json_path='E:/val_data/dataset.json', max_loss=1.22)
     # data_cleaning(src_path='E:/training_data', dist_path='E:/clean_training_data')
 
     # y_np = np.array([0, 1, 2, 0, 1, 2])
