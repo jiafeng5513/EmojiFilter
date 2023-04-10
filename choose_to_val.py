@@ -1,5 +1,5 @@
 import os, random, shutil
-from GlobalConsts import CLASSES_FOLDER
+from global_consts import CLASSES_FOLDER
 
 
 def moveFile(fileDir, tarDir):

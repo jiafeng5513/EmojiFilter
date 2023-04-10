@@ -4,3 +4,4 @@
 *.pth
 *.pyc
 __pycache__
+*.bkp

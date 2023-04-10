@@ -2,7 +2,7 @@ import json
 import os.path
 
 from PIL import Image
-from GlobalConsts import *
+from global_consts import *
 from utils import *
 
 '''

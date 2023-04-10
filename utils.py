@@ -1,4 +1,4 @@
-from GlobalConsts import *
+from global_consts import *
 import os
 import shutil
 import exifread
