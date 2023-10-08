@@ -7,7 +7,7 @@ from utils import *
 class EmojiNet_ResNet(nn.Module):
     def __init__(self, num_class):
         super(EmojiNet_ResNet, self).__init__()
-        self.backbone = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+        self.backbone = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
         # IMAGENET1K_V1: 76.130, IMAGENET1K_V2: 80.858, DEFAULT
         backbone_output_features = list(self.backbone.children())[-1].out_features
         self.fc1 = nn.Linear(backbone_output_features, 512 - len(Multimodal_features))
@@ -16,9 +16,9 @@ class EmojiNet_ResNet(nn.Module):
         self.fc3 = nn.Linear(512, 256)
         self.fc4 = nn.Linear(256, 128)
         self.fc5 = nn.Linear(128, num_class)
-        # self.fc6 = nn.Linear(64, num_class)
-        # self.fc7 = nn.Linear(32, 16)
-        # self.fc8 = nn.Linear(16, num_class)
+        # self.fc5 = nn.Linear(64, 32)
+        # self.fc6 = nn.Linear(32, 16)
+        # self.fc7 = nn.Linear(16, num_class)
 
     def forward(self, img, multimodal_feature):
         # img [B, C=3, resize_h, resize_w]
@@ -37,7 +37,6 @@ class EmojiNet_ResNet(nn.Module):
         x = self.fc5(x)
         # x = self.fc6(x)
         # x = self.fc7(x)
-        # x = self.fc8(x)
         output = torch.nn.functional.softmax(x, dim=1)
         return output
 
@@ -45,9 +44,8 @@ class EmojiNet_ResNet(nn.Module):
 def get_model_ResNet():
     model = EmojiNet_ResNet(num_class=CLASSES_COUNT)
     freezd_layer = [model.backbone.conv1, model.backbone.bn1, model.backbone.relu, model.backbone.maxpool,
-                    model.backbone.layer1, model.backbone.layer2, model.backbone.layer3, model.backbone.layer4]
-
-    no_freeze_layer = [model.backbone.avgpool, model.backbone.fc,
+                    model.backbone.layer1, model.backbone.layer2, model.backbone.layer3]
+    no_freeze_layer = [model.backbone.layer4, model.backbone.maxpool, model.backbone.fc,
                        model.fc1, model.fc2, model.fc3, model.fc4, model.fc5, model.bn1d]
     optim_param = []
     #

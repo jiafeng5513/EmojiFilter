@@ -16,9 +16,12 @@ from utils import *
 > 识别图片是为为屏幕截图/编辑过的图片
 1. 手机电量/信号标志
 2. 不正常的分辨率
+
+E:/PictureStorage/1904/1904-01-01
+
 '''
-SRC_DIR = "E:/原始数据"
-DST_DIR = "E:/training_data/emoji"
+SRC_DIR = "D:/图片/PictureStorage"
+DST_DIR = "D:/图片/filtered"
 EMOJI_FILE_SIZE_THRESHOLD = 1024 * 50  # 50kB
 EMOJI_RESOLUTION_THRESHOLD = 640 * 480
 
@@ -33,7 +36,8 @@ if __name__ == '__main__':
             # mp4,avi,raw file is not an emoji
             if filename.endswith('mp4') or filename.endswith('avi') or filename.endswith('raw') or \
                     filename.endswith('MP4') or filename.endswith('AVI') or filename.endswith('hdlr') or \
-                    filename.endswith('RAW') or filename.endswith('HEIC') or filename.endswith('MOV'):
+                    filename.endswith('RAW') or filename.endswith('HEIC') or filename.endswith('MOV') or \
+                    filename.endswith('mpg'):
                 continue
             # if exif message has camera msg, is not an emoji TODO:是否有可能某些图片有相机信息,但是其实是ps之类的软件名呢
             if is_shot_by_camera(filename):

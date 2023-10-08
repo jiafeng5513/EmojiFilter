@@ -15,8 +15,8 @@ def moveFile(fileDir, tarDir):
 
 
 if __name__ == '__main__':
-    training_root = 'E:/training_data/'
-    val_root = 'E:/val_data/'
+    training_root = 'E:/EmojiNet/training_data/'
+    val_root = 'E:/EmojiNet/val_data/'
 
     for item in CLASSES_FOLDER:
         src = os.path.join(training_root, item)

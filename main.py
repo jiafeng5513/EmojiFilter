@@ -25,14 +25,14 @@ def loss_function(logits, target):
     logits_bin[:, 0] = logits[:, 0]
     logits_bin[:, 1] = torch.sum(logits[:, 1:], dim=1)
 
-    one_target = torch.ones_like(target)
-    zero_target = torch.zeros_like(target)
-    target_bin = torch.where(target == 0, zero_target, one_target)
+    # one_target = torch.ones_like(target)
+    # zero_target = torch.zeros_like(target)
+    # target_bin = torch.where(target == 0, zero_target, one_target)
 
-    loss_a = F.cross_entropy(logits_bin, target_bin)  # camera or not
-    loss_b = F.cross_entropy(logits, target)  # all class
-    loss = alpha * loss_a + beta * loss_b
-    return loss_a, loss_b, loss
+    # loss_a = F.cross_entropy(logits_bin, target_bin)  # camera or not
+    loss = F.cross_entropy(logits, target)  # all class
+    # loss = alpha * loss_a + beta * loss_b
+    return loss
 
 
 def train_and_val(train_set_json_path, val_set_json_path):
@@ -78,12 +78,12 @@ def train_and_val(train_set_json_path, val_set_json_path):
             feature = feature.to(device)
 
             logits = model(image, feature)
-            loss_a, loss_b, loss = loss_function(logits, label)
+            loss = loss_function(logits, label)
             print("epoch {}/{}, iter {}/{}, loss = {}".format(epoch + 1, max_epoch,
                                                               iter + 1, train_mini_batch_number, loss))
             writer.add_scalar(tag="train/loss", scalar_value=loss, global_step=iter_total - 1)
-            writer.add_scalar(tag="train/loss_a", scalar_value=loss_a, global_step=iter_total - 1)
-            writer.add_scalar(tag="train/loss_b", scalar_value=loss_b, global_step=iter_total - 1)
+            # writer.add_scalar(tag="train/loss_a", scalar_value=loss_a, global_step=iter_total - 1)
+            # writer.add_scalar(tag="train/loss_b", scalar_value=loss_b, global_step=iter_total - 1)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -100,7 +100,7 @@ def train_and_val(train_set_json_path, val_set_json_path):
                         val_label = val_label.to(device)
                         feature = feature.to(device)
                         val_logits = model(val_image, feature)
-                        val_loss_a, val_loss_b, val_loss = loss_function(val_logits, val_label)
+                        val_loss = loss_function(val_logits, val_label)
                         val_result = torch.argmax(val_logits, dim=1, keepdim=False)
                         correct_count += torch.sum(val_label == val_result)
 
@@ -115,8 +115,8 @@ def train_and_val(train_set_json_path, val_set_json_path):
                         camera_correct_count += torch.sum(val_result_bin == val_label_bin)
                         print("val, iter {}/{}, loss = {}".format(val_iter + 1, val_mini_batch_number, val_loss))
                         writer.add_scalar(tag="val/loss", scalar_value=val_loss, global_step=iter_val_total)
-                        writer.add_scalar(tag="val/loss_a", scalar_value=val_loss_a, global_step=iter_val_total)
-                        writer.add_scalar(tag="val/loss_b", scalar_value=val_loss_b, global_step=iter_val_total)
+                        # writer.add_scalar(tag="val/loss_a", scalar_value=val_loss_a, global_step=iter_val_total)
+                        # writer.add_scalar(tag="val/loss_b", scalar_value=val_loss_b, global_step=iter_val_total)
                         iter_val_total += 1
                     acc = correct_count / (val_mini_batch_number * batch_size)
                     camera_acc = camera_correct_count / (val_mini_batch_number * batch_size)
@@ -278,8 +278,8 @@ def visual_inference(val_set_json_path, max_loss):
 
 
 if __name__ == "__main__":
-    train_and_val(train_set_json_path='E:/training_data/dataset.json',
-                  val_set_json_path='E:/val_data/dataset.json')
+    train_and_val(train_set_json_path='E:/EmojiNet/training_data/dataset.json',
+                  val_set_json_path='E:/EmojiNet/val_data/dataset.json')
     #
     # visual_inference(val_set_json_path='E:/val_data/dataset.json', max_loss=1.22)
     # data_cleaning(src_path='E:/training_data', dist_path='E:/clean_training_data')
